@@ -98,6 +98,10 @@ server.js (Node, zero deps) ──► Sarvam AI   (STT, LLM parse, translate, TT
 `public/` also works as a static page with no server (for example on GitHub Pages). In that mode it uses the rule-based
 parser and template notes, saves data in localStorage, and labels itself "static demo mode".
 
+## Demo video
+
+[docs/demo.mp4](docs/demo.mp4) (77 s, recorded headless with Playwright using `scripts/record-demo.py`, with no sponsor keys set, so it shows the offline fallbacks and default flags).
+
 ## Honest status
 
 - Built today (25 Nov 2026) at Festive Hacks. No code was copied from earlier projects; only general patterns we've used
