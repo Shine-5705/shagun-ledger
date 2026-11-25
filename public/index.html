@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Shagun Ledger · शगुन बही</title>
+<style>
+:root{--maroon:#7a1f2b;--gold:#d4a017;--cream:#fff8ec;--ink:#2b1a12}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,"Noto Sans Devanagari",sans-serif;background:var(--cream);color:var(--ink)}
+header{background:linear-gradient(90deg,var(--maroon),#a8323f);color:#fff;padding:18px 28px;display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid var(--gold)}
+header h1{margin:0;font-size:26px}header small{opacity:.85}
+.pills span{display:inline-block;margin-left:6px;padding:4px 10px;border-radius:999px;font-size:12px;background:#ffffff22;border:1px solid #ffffff55}
+.pills .on{background:#2e7d32}.pills .off{background:#8d6e63}
+main{display:grid;grid-template-columns:1.1fr 1fr;gap:20px;padding:20px 28px;max-width:1300px;margin:auto}
+.card{background:#fff;border-radius:14px;padding:18px;box-shadow:0 2px 10px #7a1f2b18;border:1px solid #f0e0c0}
+h2{margin:0 0 10px;font-size:18px;color:var(--maroon)}
+input,select,textarea{font:inherit;padding:10px;border:1px solid #d9c6a5;border-radius:10px;width:100%}
+button{font:inherit;padding:10px 14px;border:0;border-radius:10px;background:var(--maroon);color:#fff;cursor:pointer}
+button.gold{background:var(--gold);color:var(--ink)}button:disabled{opacity:.4;cursor:not-allowed}
+.row{display:flex;gap:8px;align-items:center}.row>*{flex:1}.row>button{flex:0 0 auto}
+table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:8px;border-bottom:1px solid #f0e0c0;text-align:left}
+.total{font-size:30px;font-weight:700;color:var(--maroon)}.muted{color:#8a7560;font-size:12px}
+.parsed{background:#fdf3dc;border-radius:10px;padding:10px;margin-top:10px;font-size:14px;display:none}
+.note{background:#fff3e0;border-left:4px solid var(--gold);padding:10px;margin-top:8px;white-space:pre-wrap}
+.flag{display:flex;justify-content:space-between;font-size:13px;padding:4px 0;border-bottom:1px dashed #eee}
+.stats{display:flex;gap:16px}.stats div{flex:1}
+</style></head><body>
+<header><div><h1>🪔 Shagun Ledger <span style="font-weight:400">· शगुन बही</span></h1><small>Speak a gift, get a ledger, send thank-yous in every guest's language</small></div>
+<div class="pills" id="pills"></div></header>
+<main>
+<section>
+ <div class="card">
+  <h2>➕ Add a shagun entry</h2>
+  <div class="row"><input id="entryText" placeholder='e.g. "Sharma uncle ne 2100 diye" or "मेहता जी ने ११०० रुपये दिए"'>
+   <button id="voiceBtn" title="Speak (Sarvam saarika STT)">🎙️ Speak</button><button id="parseBtn">Parse</button></div>
+  <div class="muted" id="voiceHint"></div>
+  <div class="parsed" id="parsed"></div>
+ </div>
+ <div class="card" style="margin-top:16px">
+  <h2>📒 Ledger</h2>
+  <div class="stats"><div><div class="muted">Total shagun</div><div class="total" id="total">₹0</div></div><div><div class="muted">Entries</div><div class="total" id="count">0</div></div><div><div class="muted">Thank-yous pending</div><div class="total" id="pending">0</div></div></div>
+  <table><thead><tr><th>Guest</th><th>Amount</th><th>Gift</th><th>Lang</th><th></th></tr></thead><tbody id="rows"></tbody></table>
+ </div>
+</section>
+<section>
+ <div class="card" id="tyCard">
+  <h2>💌 Thank-you note</h2>
+  <div class="row"><select id="tyGuest"></select><select id="tyLang"></select><button class="gold" id="tyBtn">Generate</button></div>
+  <div class="note" id="tyOut" style="display:none"></div><div class="muted" id="tyEngine"></div>
+ </div>
+ <div class="card" style="margin-top:16px" id="rsvpCard">
+  <h2>✅ RSVP tracker</h2>
+  <div class="row"><input id="rsvpName" placeholder="Guest / family"><input id="rsvpCount" type="number" min="1" value="2" style="max-width:80px"><select id="rsvpStatus" style="max-width:130px"><option>Coming</option><option>Maybe</option><option>Not coming</option></select><button id="rsvpBtn">Save</button></div>
+  <table><tbody id="rsvpRows"></tbody></table><div class="muted" id="headcount"></div>
+ </div>
+ <div class="card" style="margin-top:16px">
+  <h2>🚩 Live feature flags <span class="muted" id="flagSrc"></span></h2><div id="flags"></div>
+ </div>
+</section>
+</main>
+<script src="parse.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const LANG_NAMES = {'hi-IN':'हिन्दी','en-IN':'English','ta-IN':'தமிழ்','bn-IN':'বাংলা','mr-IN':'मराठी','gu-IN':'ગુજરાતી','te-IN':'తెలుగు','kn-IN':'ಕನ್ನಡ','ml-IN':'മലയാളം','pa-IN':'ਪੰਜਾਬੀ','od-IN':'ଓଡ଼ିଆ'};
+let SERVER = true, state = {entries:[], rsvps:[]}, FLAGS = {}, STATUS = {};
+const local = { get(){ return JSON.parse(localStorage.shagun || '{"entries":[],"rsvps":[]}'); }, set(d){ localStorage.shagun = JSON.stringify(d); } };
+async function api(p, opt){ const r = await fetch(p, opt); if(!r.ok) throw new Error((await r.json().catch(()=>({}))).error || r.status); return r.json(); }
+const post = (p, b) => api(p, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(b)});
+const inr = n => '₹' + (n||0).toLocaleString('en-IN');
+
+async function boot(){
+  try { STATUS = await api('/api/status'); const f = await api('/api/flags'); FLAGS = f.flags; $('flagSrc').textContent = 'source: ' + f.source; state = await api('/api/ledger'); }
+  catch(e){ SERVER = false; STATUS = {sarvam:false, flagsmith:'defaults (static mode)', nudgebee:false}; FLAGS = {voice_entry:{enabled:false},thank_you_generator:{enabled:true},rsvp_tracker:{enabled:true},languages:{enabled:true,value:'hi-IN,en-IN'}}; $('flagSrc').textContent='static demo mode — run server.js for Sarvam/Flagsmith'; state = local.get(); }
+  render();
+}
+function render(){
+  $('pills').innerHTML = `<span class="${STATUS.sarvam?'on':'off'}">Sarvam AI ${STATUS.sarvam?'live':'offline'}</span><span class="${String(STATUS.flagsmith).startsWith('flagsmith')?'on':'off'}">Flagsmith ${String(STATUS.flagsmith).startsWith('flagsmith')?'live':'defaults'}</span><span class="${STATUS.nudgebee?'on':'off'}">NudgeBee ${STATUS.nudgebee?'linked':'metrics only'}</span>`;
+  const voice = FLAGS.voice_entry && FLAGS.voice_entry.enabled;
+  $('voiceBtn').style.display = voice ? '' : 'none';
+  $('voiceHint').textContent = voice ? (STATUS.sarvam ? 'Voice → Sarvam saarika speech-to-text' : 'Voice needs SARVAM_API_KEY on the server') : '';
+  $('tyCard').style.display = FLAGS.thank_you_generator && FLAGS.thank_you_generator.enabled ? '' : 'none';
+  $('rsvpCard').style.display = FLAGS.rsvp_tracker && FLAGS.rsvp_tracker.enabled ? '' : 'none';
+  const langs = (FLAGS.languages && FLAGS.languages.value || 'hi-IN,en-IN').split(',').map(s=>s.trim());
+  $('tyLang').innerHTML = langs.map(l => `<option value="${l}">${LANG_NAMES[l]||l}</option>`).join('');
+  $('flags').innerHTML = Object.entries(FLAGS).map(([k,v]) => `<div class="flag"><b>${k}</b><span>${v.enabled?'🟢 on':'⚪ off'}${v.value!=null?' · '+v.value:''}</span></div>`).join('');
+  const E = state.entries;
+  $('total').textContent = inr(E.reduce((a,e)=>a+(+e.amount||0),0)); $('count').textContent = E.length; $('pending').textContent = E.filter(e=>!e.thanked).length;
+  $('rows').innerHTML = E.map(e => `<tr><td>${e.guest}${e.relation?'':''}</td><td>${e.amount?inr(e.amount):'—'}</td><td>${e.gift||'—'}</td><td>${LANG_NAMES[e.language]||e.language||''}</td><td>${e.thanked?'💌':''} <a href="#" onclick="del('${e.id}');return false" title="delete">✕</a></td></tr>`).join('') || '<tr><td colspan=5 class="muted">No entries yet — speak or type one above.</td></tr>';
+  $('tyGuest').innerHTML = E.map(e => `<option value="${e.id}">${e.guest}</option>`).join('');
+  const R = state.rsvps || [];
+  $('rsvpRows').innerHTML = R.map(r => `<tr><td>${r.name}</td><td>${r.count}</td><td>${r.status==='Coming'?'✅':r.status==='Maybe'?'🤔':'❌'} ${r.status}</td></tr>`).join('');
+  $('headcount').textContent = R.length ? `Expected headcount: ${R.filter(r=>r.status==='Coming').reduce((a,r)=>a+(+r.count),0)} confirmed, ${R.filter(r=>r.status==='Maybe').reduce((a,r)=>a+(+r.count),0)} maybe` : '';
+}
+let pending = null;
+function showParsed(e, transcript){
+  pending = e; const p = $('parsed'); p.style.display='block';
+  p.innerHTML = `${transcript?`<div class="muted">Transcript: “${transcript}”</div>`:''}<b>${e.guest}</b> · ${e.amount?inr(e.amount):'no amount'}${e.gift?' · '+e.gift:''} · ${LANG_NAMES[e.language]||e.language} <span class="muted">(parsed by ${e.parser})</span><div class="row" style="margin-top:8px"><button id="saveBtn">Add to ledger</button></div>`;
+  $('saveBtn').onclick = saveEntry;
+}
+$('parseBtn').onclick = async () => { const t = $('entryText').value.trim(); if(!t) return; showParsed(SERVER ? await post('/api/parse',{text:t}) : ShagunParse.parseEntry(t)); };
+$('entryText').onkeydown = e => { if(e.key==='Enter') $('parseBtn').click(); };
+async function saveEntry(){
+  if(SERVER) state.entries.unshift(await post('/api/entries', pending)); else { pending.id=Date.now().toString(36); state.entries.unshift(pending); local.set(state); }
+  pending=null; $('parsed').style.display='none'; $('entryText').value=''; render();
+}
+async function del(id){ if(SERVER) await api('/api/entries/'+id,{method:'DELETE'}); state.entries = state.entries.filter(e=>e.id!==id); if(!SERVER) local.set(state); render(); }
+$('tyBtn').onclick = async () => {
+  const e = state.entries.find(x=>x.id===$('tyGuest').value); if(!e) return; const lang = $('tyLang').value;
+  let r; try { r = SERVER ? await post('/api/thankyou',{entry:e, lang}) : {note: ShagunParse.thankYouTemplate(e, lang), engine:'template (static mode)'}; } catch(err){ r = {note:'Error: '+err.message, engine:''}; }
+  $('tyOut').style.display='block'; $('tyOut').textContent = r.note; $('tyEngine').textContent = 'engine: ' + r.engine; e.thanked = true; if(!SERVER) local.set(state); render();
+};
+$('rsvpBtn').onclick = async () => {
+  const r = {name:$('rsvpName').value.trim(), count:+$('rsvpCount').value||1, status:$('rsvpStatus').value}; if(!r.name) return;
+  if(SERVER) await post('/api/rsvps', r); state.rsvps = [r, ...(state.rsvps||[]).filter(x=>x.name.toLowerCase()!==r.name.toLowerCase())]; if(!SERVER) local.set(state); $('rsvpName').value=''; render();
+};
+// Voice: record with MediaRecorder, send to /api/stt (Sarvam saarika)
+let rec, chunks=[];
+$('voiceBtn').onclick = async () => {
+  if(rec && rec.state==='recording'){ rec.stop(); return; }
+  const stream = await navigator.mediaDevices.getUserMedia({audio:true}); rec = new MediaRecorder(stream); chunks=[];
+  rec.ondataavailable = e => chunks.push(e.data);
+  rec.onstop = async () => { $('voiceBtn').textContent='🎙️ Speak'; stream.getTracks().forEach(t=>t.stop());
+    const blob = new Blob(chunks,{type:rec.mimeType}); try { const r = await api('/api/stt',{method:'POST',headers:{'Content-Type':blob.type},body:blob}); $('entryText').value=r.transcript; showParsed(r.entry, r.transcript); } catch(e){ $('voiceHint').textContent='Voice error: '+e.message; } };
+  rec.start(); $('voiceBtn').textContent='⏹ Stop';
+};
+setInterval(async()=>{ if(!SERVER) return; try{ const f = await api('/api/flags'); if(JSON.stringify(f.flags)!==JSON.stringify(FLAGS)){ FLAGS=f.flags; $('flagSrc').textContent='source: '+f.source; render(); } }catch{} }, 5000);
+boot();
+</script></body></html>

@@ -1,0 +1,2 @@
+{ "name": "shagun-ledger", "version": "0.1.0", "description": "Bilingual wedding shagun ledger + RSVP tracker (Festive Hacks 2026)", "main": "server.js",
+  "scripts": { "start": "node --env-file-if-exists=.env server.js", "test": "node scripts/test-parse.js" }, "engines": { "node": ">=20.6" }, "license": "MIT" }

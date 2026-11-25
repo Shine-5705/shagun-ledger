@@ -1,0 +1,34 @@
+# Deploy to any Kubernetes cluster that has the NudgeBee agent installed
+# (https://docs.nudgebee.com). NudgeBee then watches this workload's events,
+# restarts, OOMs and resource usage, and NuBi can troubleshoot it.
+apiVersion: v1
+kind: Secret
+metadata: { name: shagun-ledger-keys }
+stringData:
+  SARVAM_API_KEY: "replace-me"
+  FLAGSMITH_ENVIRONMENT_KEY: "replace-me"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: shagun-ledger, labels: { app: shagun-ledger } }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: shagun-ledger } }
+  template:
+    metadata:
+      labels: { app: shagun-ledger }
+      annotations: { prometheus.io/scrape: "true", prometheus.io/port: "8787", prometheus.io/path: "/metrics" }
+    spec:
+      containers:
+        - name: app
+          image: ghcr.io/shine-5705/shagun-ledger:latest
+          ports: [{ containerPort: 8787 }]
+          envFrom: [{ secretRef: { name: shagun-ledger-keys } }]
+          resources: { requests: { cpu: 50m, memory: 64Mi }, limits: { cpu: 250m, memory: 128Mi } }
+          readinessProbe: { httpGet: { path: /healthz, port: 8787 } }
+          livenessProbe: { httpGet: { path: /healthz, port: 8787 }, periodSeconds: 20 }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: shagun-ledger }
+spec: { selector: { app: shagun-ledger }, ports: [{ port: 80, targetPort: 8787 }] }
